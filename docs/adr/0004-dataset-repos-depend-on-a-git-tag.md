@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-10-12). Spec [004](../specs/004-source-toolkit/spec.md).
+Accepted (2026-10-12). Spec [004](../specs/004-source-toolkit/spec.md). Amended by [ADR 0008](0008-supported-installs-are-uv-with-a-pinned-git-source.md) (proposed): which installs are supported.
 
 ## Context
 
@@ -37,5 +37,5 @@ Accepted (2026-10-12). Spec [004](../specs/004-source-toolkit/spec.md).
 
 - Consumers need network access to GitHub when they resolve or sync without a cache, as they already do for PyPI.
 - A tag must exist before a consumer can adopt a version; the pull request that changes the package ends with a tagging step for the maintainer.
-- `pip` users can install the same ref with `pip install "benchcommons-tools-dataset @ git+https://github.com/BenchCommons/tools-dataset@v0.1.0"`.
+- `pip` users can install the same ref, as a one-off, with `pip install "benchcommons-tools-dataset @ git+https://github.com/BenchCommons/tools-dataset@v0.1.0"`.
 - A tag that points at a broken commit cannot be fixed in place; the fix is a new patch tag.
