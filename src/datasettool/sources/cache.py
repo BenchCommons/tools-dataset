@@ -8,6 +8,7 @@ Ported from BenchCommons/dataset-names@e7e8405 src/namescommons/cache.py.
 import hashlib
 import json
 import os
+import secrets
 import time
 import urllib.error
 import urllib.request
@@ -55,15 +56,34 @@ def cached_path(cache_dir: Path, source_id: str, filename: str) -> Path:
     return path
 
 
+def _create_temp(dest: Path) -> tuple[Path, int]:
+    """Create a new, unique `<name>.<random>.part` next to dest and return it open for writing (R2.5).
+
+    The file is created exclusively and without following links, so a file or symbolic link
+    already at that name is never opened. `.part` names are never resource names (R4.2).
+    """
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    while True:
+        tmp = dest.with_name(f"{dest.name}.{secrets.token_hex(8)}.part")
+        try:
+            return tmp, os.open(tmp, flags, 0o666)
+        except FileExistsError:
+            continue
+
+
 def _write_atomic(dest: Path, content: bytes) -> None:
-    tmp = dest.with_name(dest.name + ".part")
-    tmp.write_bytes(content)
-    os.replace(tmp, dest)
+    tmp, fd = _create_temp(dest)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(content)
+        os.replace(tmp, dest)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def _download(url: str, dest: Path, timeout: float, user_agent: str) -> dict:
     """Download url to dest through a temporary file; return the metadata."""
-    tmp = dest.with_name(dest.name + ".part")
+    tmp = None
     request = urllib.request.Request(url, headers={"User-Agent": user_agent})
     h = hashlib.sha256()
     size = 0
@@ -72,7 +92,8 @@ def _download(url: str, dest: Path, timeout: float, user_agent: str) -> dict:
             content_type = response.headers.get_content_type()  # lowercase, without parameters
             if content_type == "text/html" and not dest.name.lower().endswith(_PAGES):
                 raise BlockedError(f"the server returned an HTML page ({content_type}) instead of {dest.name}")
-            with open(tmp, "wb") as fh:
+            tmp, fd = _create_temp(dest)
+            with os.fdopen(fd, "wb") as fh:
                 announced = response.headers.get("Content-Length")
                 while block := response.read(BLOCK):
                     fh.write(block)
@@ -99,7 +120,8 @@ def _download(url: str, dest: Path, timeout: float, user_agent: str) -> dict:
         _write_atomic(meta_file, (json.dumps(meta, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
         return meta
     finally:
-        tmp.unlink(missing_ok=True)
+        if tmp is not None:
+            tmp.unlink(missing_ok=True)
 
 
 def _final(e: Exception) -> bool:

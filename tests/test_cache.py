@@ -282,3 +282,45 @@ def test_symlinked_source_directory_leaving_the_cache_is_refused(tmp_path):
     (cache / "src").symlink_to(outside)
     with pytest.raises(ValueError, match="outside the cache"):
         cached_path(cache, "src", "a.csv")
+
+
+# Temporary files never follow links (issue #14): R2.5 ---------------------------------------------
+
+def _plant(cache, name, target):
+    (cache / "src").mkdir(parents=True, exist_ok=True)
+    (cache / "src" / name).symlink_to(target)
+
+
+def test_planted_part_symlinks_are_not_followed(server, tmp_path):
+    cache = tmp_path / "cache"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    body_target, meta_target = outside / "body", outside / "meta"
+    body_target.write_text("KEEP-BODY", encoding="utf-8")
+    meta_target.write_text("KEEP-META", encoding="utf-8")
+    _plant(cache, "a.csv.part", body_target)
+    _plant(cache, "a.csv.meta.json.part", meta_target)
+    dest = fetch_resource(cache, "src", _resource(server))
+    assert body_target.read_text(encoding="utf-8") == "KEEP-BODY"
+    assert meta_target.read_text(encoding="utf-8") == "KEEP-META"
+    assert dest.read_bytes() == BODY and not dest.is_symlink()
+    meta = dest.with_name("a.csv.meta.json")
+    assert not meta.is_symlink() and json.loads(meta.read_text(encoding="utf-8"))["size"] == len(BODY)
+
+
+def test_dangling_part_symlink_does_not_create_its_target(server, tmp_path):
+    cache = tmp_path / "cache"
+    target = tmp_path / "outside" / "created"
+    target.parent.mkdir()
+    _plant(cache, "a.csv.part", target)
+    fetch_resource(cache, "src", _resource(server))
+    assert not target.exists()
+
+
+def test_no_temporary_file_is_left_after_success_or_failure(server, tmp_path):
+    fetch_resource(tmp_path, "src", _resource(server))
+    server.truncated.add("/b.csv")
+    bad = _resource(server, "/b.csv")
+    with pytest.raises(FetchError):
+        fetch_resource(tmp_path, "src", bad, attempts=1)
+    assert sorted(p.name for p in (tmp_path / "src").iterdir()) == ["a.csv", "a.csv.meta.json"]
