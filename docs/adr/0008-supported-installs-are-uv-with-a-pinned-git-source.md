@@ -24,4 +24,5 @@ Dataset repos declare `benchcommons-tools-dataset==X.Y.Z` in `[project] dependen
 ## Consequences
 
 - The risk is mitigated by documentation, not removed: someone who installs a dataset repo with an unsupported tool can still fetch a squatted package. Only reserving the name removes it.
+- The commit SHA in `uv.lock` is the effective pin: `uv sync --locked` installs that commit even if a tag is later moved. A moved tag only changes the result of a new `uv lock`, so reviewers of a lock change check that the SHA belongs to the intended tag. Protection of `main` and of `v*` tags is tracked in [#12](https://github.com/BenchCommons/tools-dataset/issues/12). A `rev` pin to a full SHA does not depend on tag protection.
 - No code, dependency or release changes.
